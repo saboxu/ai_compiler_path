@@ -1,0 +1,14 @@
+# Build artifacts
+tvm/toy_mlir/build/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
