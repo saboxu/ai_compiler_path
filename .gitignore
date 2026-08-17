@@ -1,11 +1,15 @@
 # Build artifacts
 tvm/toy_mlir/build/
+tvm/libgemm_avx2.so
+tvm/*.o
+tvm/*.a
 
-# Python
+# Python / uv
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+tvm/.venv/
 
 # Editor / OS
 .DS_Store

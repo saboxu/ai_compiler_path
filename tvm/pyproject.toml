@@ -1,0 +1,18 @@
+[project]
+name = "ai-compiler-path-tvm"
+version = "0.1.0"
+description = "Local uv env for Apache TVM / Relax examples"
+requires-python = "==3.12.*"
+dependencies = [
+  "apache-tvm>=0.26.0",
+  "numpy",
+  "packaging",
+  "psutil",
+  "scipy",
+  "sympy",
+  "tornado",
+  "cloudpickle",
+]
+
+[tool.uv]
+python-preference = "managed"

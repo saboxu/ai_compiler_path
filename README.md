@@ -11,6 +11,11 @@ ai_compiler_path/
     ├── relax_vector_add_llvm.py       # TIRx vector_add → LLVM / Relax VM
     ├── relax_matmul_schedule.py       # matmul tiling + GPU/CPU schedule
     ├── relax_fuse_ops_by_pattern.py   # DPL 算子融合（FuseOpsByPattern）
+    ├── mlir_data_parallel.mlir        # StableHLO/GSPMD 数据并行注解（正式示意）
+    ├── mlir_data_parallel.py          # 对照讲解 + NumPy 4 卡 DP 仿真
+    ├── gemm_avx2_blocked.cpp          # 手写分块 GEMM + AVX2/FMA 4×8 micro-kernel
+    ├── compare_small_gemm.py          # 小型 GEMM：AVX2 / NumPy / TVM 对比
+    ├── symbolic_shape_inference.py    # 符号形状推理：sympy + Relax 动态维
     ├── generated/                     # mlir-tblgen 生成的参考产物
     └── toy_mlir/                      # 可编译运行的 out-of-tree Toy 方言
         ├── include/Toy/
@@ -24,19 +29,23 @@ ai_compiler_path/
 
 | 部分 | 依赖 |
 |------|------|
-| Relax / TIRx 脚本 | 本机 TVM 源码（见下方 `source tvm/env.sh`）、`numpy`；可选 CUDA |
+| Relax / TIRx / 对比脚本 | `tvm/` 下 **uv** 虚拟环境（Python 3.12，`apache-tvm`、`numpy`、`sympy` 等）；可选 CUDA |
+| 手写 AVX2 GEMM | `g++`（`-mavx2 -mfma -fopenmp`），由 `compare_small_gemm.py` 自动编译 |
 | `toy_mlir` | conda 安装的 **MLIR / LLVM 22**（`mlir-tblgen`、`libMLIR`、`clang++`） |
 
 ### TVM Python 环境
 
-仓库不自带 Apache TVM wheel。若 `import tvm` 失败，先加载本地编译好的 TVM：
+推荐用目录内 uv 环境（已写入 `tvm/pyproject.toml`）：
 
 ```bash
 cd tvm
-source ./env.sh    # 默认 TVM_HOME=/Users/saboxu/Downloads/codes/tvm
+# 若尚未创建：
+#   uv venv --python 3.12 .venv
+#   uv pip install --python .venv/bin/python -e .
+source ./env.sh    # 激活 .venv，并可选挂上本地 TVM_HOME
 ```
 
-也可自行设置：
+若要用自己编译的 TVM 源码而非 PyPI wheel：
 
 ```bash
 export TVM_HOME=/path/to/your/tvm
@@ -57,7 +66,13 @@ python relax_basic.py                 # 打印 Relax IR
 python relax_vector_add_llvm.py       # LLVM IR 片段 + Relax VM 数值校验
 python relax_matmul_schedule.py       # schedule；有 CUDA 则上 GPU，否则 llvm
 python relax_fuse_ops_by_pattern.py   # conv+bn+relu / conv+relu 模式融合
+python mlir_data_parallel.py          # StableHLO 数据并行注解讲解 + NumPy 仿真
+python compare_small_gemm.py          # 小型 GEMM：手写 AVX2 分块 vs NumPy vs TVM
+python symbolic_shape_inference.py    # 符号形状推理：(b,s,d)@ (d,4d)->(b,s,4d)
 ```
+
+配套 IR 见 `mlir_data_parallel.mlir`（GSPMD sharding + `stablehlo.all_reduce`）。
+手写内核见 `gemm_avx2_blocked.cpp`（OpenMP 分块 + AVX2/FMA 4×8 micro-kernel）。
 
 ### 2. MLIR Toy 方言
 
@@ -81,7 +96,10 @@ cd tvm/toy_mlir
 2. **`relax_vector_add_llvm.py`** — TIRx PrimFunc、`R.call_tir`、LLVM codegen、Relax VM
 3. **`relax_matmul_schedule.py`** — `tvm.s_tir.Schedule`：tile、reorder、bind
 4. **`relax_fuse_ops_by_pattern.py`** — DPL 模式匹配 + `FuseOpsByPattern` / `FuseTIR`
-5. **`toy_mlir/`** — TableGen 定义方言，再写 Pass 做常量折叠
+5. **`mlir_data_parallel.mlir` / `.py`** — 数据并行：sharding 注解、All-Reduce、与单卡等价性
+6. **`compare_small_gemm.py`** — 手写 AVX2 分块 GEMM vs NumPy/BLAS vs TVM tile
+7. **`symbolic_shape_inference.py`** — 符号维推理规则（matmul/softmax/add），非仅硬编码结果
+8. **`toy_mlir/`** — TableGen 定义方言，再写 Pass 做常量折叠
 
 ## 参考
 
