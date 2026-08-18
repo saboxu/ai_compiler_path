@@ -6,6 +6,11 @@ AI 编译器入门练习：从 **TVM Relax / TIRx** 写算子与调度，到用 
 
 ```
 ai_compiler_path/
+├── tiny-accel-mlir/                   # 迷你加速器 MLIR 后端（tinyaccel 方言）
+│   ├── build_and_run.sh
+│   ├── examples/
+│   ├── llvm_target_skeleton/          # LLVM Target 说明骨架（不链接）
+│   └── python_sim/                    # 简单 ISA 解释器
 └── tvm/
     ├── relax_basic.py                 # Relax IR 入门：(x+y)*(x-y)
     ├── relax_vector_add_llvm.py       # TIRx vector_add → LLVM / Relax VM
@@ -31,7 +36,8 @@ ai_compiler_path/
 |------|------|
 | Relax / TIRx / 对比脚本 | `tvm/` 下 **uv** 虚拟环境（Python 3.12，`apache-tvm`、`numpy`、`sympy` 等）；可选 CUDA |
 | 手写 AVX2 GEMM | `g++`（`-mavx2 -mfma -fopenmp`），由 `compare_small_gemm.py` 自动编译 |
-| `toy_mlir` | conda 安装的 **MLIR / LLVM 22**（`mlir-tblgen`、`libMLIR`、`clang++`） |
+| `tiny-accel-mlir` | **MLIR / LLVM 22**（`mlir-tblgen`、`libMLIR`、`clang++`；可用 apt 安装） |
+| `toy_mlir` | 同上，或 conda 安装的 MLIR / LLVM 22 |
 
 ### TVM Python 环境
 
@@ -74,7 +80,16 @@ python symbolic_shape_inference.py    # 符号形状推理：(b,s,d)@ (d,4d)->(b
 配套 IR 见 `mlir_data_parallel.mlir`（GSPMD sharding + `stablehlo.all_reduce`）。
 手写内核见 `gemm_avx2_blocked.cpp`（OpenMP 分块 + AVX2/FMA 4×8 micro-kernel）。
 
-### 2. MLIR Toy 方言
+### 2. tiny-accel-mlir（MLIR 加速器后端）
+
+```bash
+cd tiny-accel-mlir
+./build_and_run.sh
+# arith → tinyaccel → fuse mac → textual ISA
+python3 python_sim/run_isa_sim.py --a 2 --b 3 --c 4
+```
+
+### 3. MLIR Toy 方言
 
 ```bash
 cd tvm/toy_mlir
@@ -99,13 +114,15 @@ cd tvm/toy_mlir
 5. **`mlir_data_parallel.mlir` / `.py`** — 数据并行：sharding 注解、All-Reduce、与单卡等价性
 6. **`compare_small_gemm.py`** — 手写 AVX2 分块 GEMM vs NumPy/BLAS vs TVM tile
 7. **`symbolic_shape_inference.py`** — 符号维推理规则（matmul/softmax/add），非仅硬编码结果
-8. **`toy_mlir/`** — TableGen 定义方言，再写 Pass 做常量折叠
+8. **`tiny-accel-mlir/`** — 迷你加速器后端：lowering / fuse / ISA emit（+ LLVM Target 骨架说明）
+9. **`toy_mlir/`** — TableGen 定义方言，再写 Pass 做常量折叠
 
 ## 参考
 
 - [Apache TVM](https://tvm.apache.org/)
 - [Relax Dataflow Pattern Language](https://tvm.apache.org/docs/deep_dive/relax/dpl.html)
 - [MLIR](https://mlir.llvm.org/)
+- `tiny-accel-mlir/README.md` — 迷你加速器后端（lowering / fuse / emit）
 - `tvm/toy_mlir/README.md` — Toy 方言构建说明
 
 ## License

@@ -1,5 +1,6 @@
 # Build artifacts
 tvm/toy_mlir/build/
+tiny-accel-mlir/build/
 tvm/libgemm_avx2.so
 tvm/*.o
 tvm/*.a
