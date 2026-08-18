@@ -2,7 +2,7 @@
 // Pipeline:
 //   --convert-arith-to-tinyaccel
 //   --tinyaccel-fuse-mul-add
-//   --tinyaccel-emit-isa
+//   --convert-tinyaccel-to-arith   (then mlir-opt/llc → native x86)
 
 module {
   func.func @dot_like(%a: f32, %b: f32, %c: f32) -> f32 {

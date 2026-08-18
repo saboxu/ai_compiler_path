@@ -8,9 +8,9 @@ AI 编译器入门练习：从 **TVM Relax / TIRx** 写算子与调度，到用 
 ai_compiler_path/
 ├── tiny-accel-mlir/                   # 迷你加速器 MLIR 后端（tinyaccel 方言）
 │   ├── build_and_run.sh
+│   ├── compile_native.sh              # 降到 LLVM IR → 本机 x86-64
 │   ├── examples/
-│   ├── llvm_target_skeleton/          # LLVM Target 说明骨架（不链接）
-│   └── python_sim/                    # 简单 ISA 解释器
+│   └── llvm_target_skeleton/          # 自研 ISA 的 LLVM Target 说明（不链接）
 └── tvm/
     ├── relax_basic.py                 # Relax IR 入门：(x+y)*(x-y)
     ├── relax_vector_add_llvm.py       # TIRx vector_add → LLVM / Relax VM
@@ -85,8 +85,8 @@ python symbolic_shape_inference.py    # 符号形状推理：(b,s,d)@ (d,4d)->(b
 ```bash
 cd tiny-accel-mlir
 ./build_and_run.sh
-# arith → tinyaccel → fuse mac → textual ISA
-python3 python_sim/run_isa_sim.py --a 2 --b 3 --c 4
+# arith → tinyaccel → fuse mac → LLVM x86 机器码（dot_like = 10）
+./compile_native.sh 2 3 4
 ```
 
 ### 3. MLIR Toy 方言
@@ -114,7 +114,7 @@ cd tvm/toy_mlir
 5. **`mlir_data_parallel.mlir` / `.py`** — 数据并行：sharding 注解、All-Reduce、与单卡等价性
 6. **`compare_small_gemm.py`** — 手写 AVX2 分块 GEMM vs NumPy/BLAS vs TVM tile
 7. **`symbolic_shape_inference.py`** — 符号维推理规则（matmul/softmax/add），非仅硬编码结果
-8. **`tiny-accel-mlir/`** — 迷你加速器后端：lowering / fuse / ISA emit（+ LLVM Target 骨架说明）
+8. **`tiny-accel-mlir/`** — 迷你加速器后端：lowering / fuse / 本机 x86 codegen（+ LLVM Target 骨架说明）
 9. **`toy_mlir/`** — TableGen 定义方言，再写 Pass 做常量折叠
 
 ## 参考
@@ -122,7 +122,7 @@ cd tvm/toy_mlir
 - [Apache TVM](https://tvm.apache.org/)
 - [Relax Dataflow Pattern Language](https://tvm.apache.org/docs/deep_dive/relax/dpl.html)
 - [MLIR](https://mlir.llvm.org/)
-- `tiny-accel-mlir/README.md` — 迷你加速器后端（lowering / fuse / emit）
+- `tiny-accel-mlir/README.md` — 迷你加速器后端（lowering / fuse / 本机 x86 codegen）
 - `tvm/toy_mlir/README.md` — Toy 方言构建说明
 
 ## License

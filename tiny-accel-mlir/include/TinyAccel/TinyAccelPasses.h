@@ -7,8 +7,8 @@
 
 namespace tinyaccel {
 void registerConvertArithToTinyAccelPass();
+void registerConvertTinyAccelToArithPass();
 void registerFuseMulAddPass();
-void registerEmitSimpleISAPass();
 void registerAllPasses();
 } // namespace tinyaccel
 

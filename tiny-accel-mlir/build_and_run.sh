@@ -44,8 +44,8 @@ SRCS=(
   "$ROOT/lib/TinyAccelDialect.cpp"
   "$ROOT/lib/TinyAccelOps.cpp"
   "$ROOT/lib/LowerArithToTinyAccel.cpp"
+  "$ROOT/lib/LowerTinyAccelToArith.cpp"
   "$ROOT/lib/FuseMulAddPass.cpp"
-  "$ROOT/lib/EmitSimpleISA.cpp"
   "$ROOT/tools/tinyaccel-opt.cpp"
 )
 OBJS=()
@@ -82,15 +82,5 @@ echo
 echo "===== (2) after lowering + --tinyaccel-fuse-mul-add ====="
 "$OPT" "$EX" --convert-arith-to-tinyaccel --tinyaccel-fuse-mul-add
 echo
-echo "===== (3) + --tinyaccel-emit-isa  (teaching codegen) ====="
-"$OPT" "$EX" \
-  --convert-arith-to-tinyaccel \
-  --tinyaccel-fuse-mul-add \
-  --tinyaccel-emit-isa \
-  -o /dev/null
-
-echo
-echo "Tip: inspect passes with:"
-echo "  $OPT --help | grep tinyaccel"
-echo "LLVM Target skeleton (not built here): llvm_target_skeleton/"
-echo "Optional Python ISA interpreter: python3 python_sim/run_isa_sim.py"
+echo "[4/4] Native x86-64 codegen (LLVM ISel → ELF)"
+"$ROOT/compile_native.sh" 2 3 4
