@@ -2,6 +2,16 @@
 
 AI 编译器入门练习：从 **TVM Relax / TIRx** 写算子与调度，到用 **MLIR** 定义 Toy 方言并实现常量折叠 Pass。
 
+## Clone
+
+```bash
+git clone --recursive git@github.com:saboxu/ai_compiler_path.git
+# 已 clone 过：
+git submodule update --init --recursive
+```
+
+`tiny-accel-mlir` 为独立子模块：[saboxu/tiny-accel-mlir](https://github.com/saboxu/tiny-accel-mlir)
+
 ## 目录结构
 
 ```
