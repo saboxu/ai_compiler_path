@@ -1,0 +1,3 @@
+[submodule "tiny-accel-mlir"]
+	path = tiny-accel-mlir
+	url = git@github.com:saboxu/tiny-accel-mlir.git
