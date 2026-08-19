@@ -1,3 +1,6 @@
 [submodule "tiny-accel-mlir"]
 	path = tiny-accel-mlir
 	url = git@github.com:saboxu/tiny-accel-mlir.git
+[submodule "stablehlo"]
+	path = third_party/stablehlo
+	url = https://github.com/openxla/stablehlo.git

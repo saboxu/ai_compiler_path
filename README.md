@@ -21,6 +21,12 @@ ai_compiler_path/
 │   ├── compile_native.sh              # 降到 LLVM IR → 本机 x86-64
 │   ├── examples/
 │   └── llvm_target_skeleton/          # 自研 ISA 的 LLVM Target 说明（不链接）
+├── stablehlo_tp_allreduce_pass/      # StableHLO TP：C++ Pass 插入 stablehlo.all_reduce
+│   ├── src/                          # out-of-tree pass 代码
+│   ├── build.sh                      # 用系统 MLIR/LLVM 22 构建 pass so
+│   └── README.md
+└── third_party/
+    └── stablehlo/                    # openxla/stablehlo 子模块（用于 dialect/ops & 验证）
 └── tvm/
     ├── relax_basic.py                 # Relax IR 入门：(x+y)*(x-y)
     ├── relax_vector_add_llvm.py       # TIRx vector_add → LLVM / Relax VM
@@ -28,6 +34,8 @@ ai_compiler_path/
     ├── relax_fuse_ops_by_pattern.py   # DPL 算子融合（FuseOpsByPattern）
     ├── mlir_data_parallel.mlir        # StableHLO/GSPMD 数据并行注解（正式示意）
     ├── mlir_data_parallel.py          # 对照讲解 + NumPy 4 卡 DP 仿真
+    ├── mlir_tensor_parallel.mlir     # StableHLO/GSPMD 张量并行注解（column→row→AllReduce）
+    ├── mlir_tensor_parallel.py       # 对照讲解 + NumPy TP 仿真（2-layer matmul）
     ├── gemm_avx2_blocked.cpp          # 手写分块 GEMM + AVX2/FMA 4×8 micro-kernel
     ├── compare_small_gemm.py          # 小型 GEMM：AVX2 / NumPy / TVM 对比
     ├── symbolic_shape_inference.py    # 符号形状推理：sympy + Relax 动态维
@@ -83,11 +91,13 @@ python relax_vector_add_llvm.py       # LLVM IR 片段 + Relax VM 数值校验
 python relax_matmul_schedule.py       # schedule；有 CUDA 则上 GPU，否则 llvm
 python relax_fuse_ops_by_pattern.py   # conv+bn+relu / conv+relu 模式融合
 python mlir_data_parallel.py          # StableHLO 数据并行注解讲解 + NumPy 仿真
+python mlir_tensor_parallel.py       # StableHLO 张量并行注解（column→row→AllReduce）+ NumPy 仿真
 python compare_small_gemm.py          # 小型 GEMM：手写 AVX2 分块 vs NumPy vs TVM
 python symbolic_shape_inference.py    # 符号形状推理：(b,s,d)@ (d,4d)->(b,s,4d)
 ```
 
-配套 IR 见 `mlir_data_parallel.mlir`（GSPMD sharding + `stablehlo.all_reduce`）。
+配套 IR 见 `mlir_data_parallel.mlir`（GSPMD sharding + `stablehlo.all_reduce`）以及
+`mlir_tensor_parallel.mlir`（column→row→AllReduce(SUM)）。
 手写内核见 `gemm_avx2_blocked.cpp`（OpenMP 分块 + AVX2/FMA 4×8 micro-kernel）。
 
 ### 2. tiny-accel-mlir（MLIR 加速器后端）
@@ -99,7 +109,25 @@ cd tiny-accel-mlir
 ./compile_native.sh 2 3 4
 ```
 
-### 3. MLIR Toy 方言
+### 3. StableHLO TP AllReduce Pass（C++ / MLIR plugin）
+
+```bash
+cd stablehlo_tp_allreduce_pass
+./build.sh
+```
+
+运行时建议用你自己构建出来的 `stablehlo-opt`（带 StableHLO dialect）：
+
+```bash
+stablehlo-opt \
+  --load-pass-plugin=./build/stablehlo_tp_allreduce_pass.so \
+  -stablehlo-tp-allreduce \
+  input.mlir -o output.mlir
+```
+
+这个 pass 的当前启发式逻辑依赖 `mhlo.sharding` 注解是否在 matmul 的两个输入上都存在。
+
+### 4. MLIR Toy 方言
 
 ```bash
 cd tvm/toy_mlir
@@ -122,10 +150,11 @@ cd tvm/toy_mlir
 3. **`relax_matmul_schedule.py`** — `tvm.s_tir.Schedule`：tile、reorder、bind
 4. **`relax_fuse_ops_by_pattern.py`** — DPL 模式匹配 + `FuseOpsByPattern` / `FuseTIR`
 5. **`mlir_data_parallel.mlir` / `.py`** — 数据并行：sharding 注解、All-Reduce、与单卡等价性
-6. **`compare_small_gemm.py`** — 手写 AVX2 分块 GEMM vs NumPy/BLAS vs TVM tile
-7. **`symbolic_shape_inference.py`** — 符号维推理规则（matmul/softmax/add），非仅硬编码结果
-8. **`tiny-accel-mlir/`** — 迷你加速器后端：lowering / fuse / 本机 x86 codegen（+ LLVM Target 骨架说明）
-9. **`toy_mlir/`** — TableGen 定义方言，再写 Pass 做常量折叠
+6. **`mlir_tensor_parallel.mlir` / `.py`** — 张量并行：column-parallel / row-parallel / AllReduce(SUM)
+7. **`compare_small_gemm.py`** — 手写 AVX2 分块 GEMM vs NumPy/BLAS vs TVM tile
+8. **`symbolic_shape_inference.py`** — 符号维推理规则（matmul/softmax/add），非仅硬编码结果
+9. **`tiny-accel-mlir/`** — 迷你加速器后端：lowering / fuse / 本机 x86 codegen（+ LLVM Target 骨架说明）
+10. **`toy_mlir/`** — TableGen 定义方言，再写 Pass 做常量折叠
 
 ## 参考
 
