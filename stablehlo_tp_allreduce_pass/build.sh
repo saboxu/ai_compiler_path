@@ -16,3 +16,7 @@ cmake --build "$BUILD_DIR" -j"${BUILD_JOBS:-4}"
 echo "Built: $BUILD_DIR/stablehlo_tp_allreduce_pass.so"
 echo "Built: $BUILD_DIR/stablehlo-tp-opt"
 
+if [[ "${RUN_REGRESSION:-0}" == "1" ]]; then
+  RUN_REGRESSION=1 "$ROOT/test/run_regression.sh"
+fi
+

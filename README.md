@@ -109,23 +109,24 @@ cd tiny-accel-mlir
 ./compile_native.sh 2 3 4
 ```
 
-### 3. StableHLO TP AllReduce Pass（C++ / MLIR plugin）
+### 3. StableHLO TP AllReduce Pass（C++ / local driver）
 
 ```bash
 cd stablehlo_tp_allreduce_pass
 ./build.sh
+./test/run_regression.sh
 ```
 
-运行时建议用你自己构建出来的 `stablehlo-opt`（带 StableHLO dialect）：
+推荐用本地 driver（不依赖 plugin 加载）：
 
 ```bash
-stablehlo-opt \
-  --load-pass-plugin=./build/stablehlo_tp_allreduce_pass.so \
-  -stablehlo-tp-allreduce \
-  input.mlir -o output.mlir
+./build/stablehlo-tp-opt \
+  --stablehlo-tp-allreduce \
+  test/tp_two_layer.mlir -o output.mlir
 ```
 
-这个 pass 的当前启发式逻辑依赖 `mhlo.sharding` 注解是否在 matmul 的两个输入上都存在。
+Pass 通过 `dot_dimension_numbers` 的 contracting dims + RHS global/local shape
+对比识别 row-parallel matmul，并在其后插入 `stablehlo.all_reduce(SUM)`。
 
 ### 4. MLIR Toy 方言
 

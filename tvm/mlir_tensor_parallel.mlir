@@ -31,7 +31,7 @@ module attributes {mhlo.num_replicas = 4 : i32} {
   func.func @forward_tp_two_layer(
       %x: tensor<16x8xf32> {mhlo.sharding = "{replicated}"},
       %w1: tensor<8x16xf32> {mhlo.sharding = "{devices=[4]<=[4]}"}, // column shard on dim=1
-      %w2: tensor<16x6xf32> {mhlo.sharding = "{devices=[4]<=[4]}"}, // row shard on dim=0
+      %w2: tensor<16x6xf32> {mhlo.sharding = "{devices=[4]<=[4]}"} // row shard on dim=0
     ) -> tensor<16x6xf32> {
     // Per-replica local view after partitioning:
     //   x_local    : tensor<16x8xf32>       (replicated)

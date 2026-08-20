@@ -23,6 +23,149 @@ using namespace mlir;
 
 namespace {
 
+struct DotDimensionInfo {
+  SmallVector<int64_t> lhsContracting;
+  SmallVector<int64_t> rhsContracting;
+};
+
+static bool parseInt64List(llvm::StringRef inside,
+                           SmallVectorImpl<int64_t> &out) {
+  inside = inside.trim();
+  if (inside.empty())
+    return false;
+
+  bool any = false;
+  while (!inside.empty()) {
+    llvm::StringRef token = inside.take_until([](char c) { return c == ','; });
+    token = token.trim();
+    if (!token.empty()) {
+      int64_t v = 0;
+      if (!token.getAsInteger(10, v)) {
+        out.push_back(v);
+        any = true;
+      }
+    }
+    if (auto commaPos = inside.find(',');
+        commaPos != llvm::StringRef::npos) {
+      inside = inside.drop_front(commaPos + 1);
+    } else {
+      inside = {};
+    }
+  }
+  return any;
+}
+
+static bool parseDimListFromPrintedAttr(llvm::StringRef printed,
+                                        llvm::StringRef key,
+                                        SmallVectorImpl<int64_t> &out) {
+  size_t pos = printed.find(key);
+  if (pos == llvm::StringRef::npos)
+    return false;
+  pos = printed.find('[', pos);
+  if (pos == llvm::StringRef::npos)
+    return false;
+  size_t end = printed.find(']', pos);
+  if (end == llvm::StringRef::npos || end <= pos)
+    return false;
+  return parseInt64List(printed.slice(pos + 1, end), out);
+}
+
+static DotDimensionInfo getDotDimensionInfo(Operation *dotOp) {
+  DotDimensionInfo info;
+  auto name = dotOp->getName().getStringRef();
+
+  if (name == "stablehlo.dot") {
+    auto lhsTy = llvm::dyn_cast<ShapedType>(dotOp->getOperand(0).getType());
+    if (!lhsTy)
+      return info;
+    info.lhsContracting.push_back(lhsTy.getRank() - 1);
+    info.rhsContracting.push_back(0);
+    return info;
+  }
+
+  if (name != "stablehlo.dot_general")
+    return info;
+
+  if (auto attr = dotOp->getAttr("dot_dimension_numbers")) {
+    std::string printed;
+    llvm::raw_string_ostream os(printed);
+    attr.print(os);
+    os.flush();
+    llvm::StringRef s = printed;
+    parseDimListFromPrintedAttr(s, "lhs_contracting_dimensions", info.lhsContracting);
+    parseDimListFromPrintedAttr(s, "rhs_contracting_dimensions", info.rhsContracting);
+  }
+  return info;
+}
+
+static std::optional<RankedTensorType> getGlobalRankedType(Value v) {
+  if (auto arg = llvm::dyn_cast<BlockArgument>(v))
+    return llvm::dyn_cast<RankedTensorType>(arg.getType());
+
+  Operation *defOp = v.getDefiningOp();
+  if (!defOp)
+    return std::nullopt;
+
+  if (defOp->getName().getStringRef() == "stablehlo.custom_call" &&
+      defOp->getNumOperands() > 0) {
+    return llvm::dyn_cast<RankedTensorType>(defOp->getOperand(0).getType());
+  }
+
+  return llvm::dyn_cast<RankedTensorType>(v.getType());
+}
+
+static bool isDynamicOrUnknownDim(int64_t dimSize) {
+  return ShapedType::isDynamic(dimSize);
+}
+
+/// Megatron-style row-parallel matmul produces a partial sum when the RHS
+/// global shape is sharded along a dot contracting dimension.
+static bool isRowParallelPartialSum(Operation *dotOp, Value rhs) {
+  auto localRhs = llvm::dyn_cast<RankedTensorType>(rhs.getType());
+  auto globalRhsOpt = getGlobalRankedType(rhs);
+  if (!localRhs || !globalRhsOpt)
+    return false;
+  RankedTensorType globalRhs = *globalRhsOpt;
+  if (localRhs.getRank() != globalRhs.getRank())
+    return false;
+
+  DotDimensionInfo dotDims = getDotDimensionInfo(dotOp);
+  if (dotDims.rhsContracting.empty())
+    return false;
+
+  for (int64_t dim : dotDims.rhsContracting) {
+    if (dim < 0 || dim >= localRhs.getRank())
+      continue;
+    int64_t local = localRhs.getDimSize(dim);
+    int64_t global = globalRhs.getDimSize(dim);
+    if (isDynamicOrUnknownDim(local) || isDynamicOrUnknownDim(global))
+      continue;
+    if (global > local)
+      return true;
+  }
+  return false;
+}
+
+static std::optional<int64_t> inferNumReplicasFromShardRatio(Value rhs) {
+  auto localRhs = llvm::dyn_cast<RankedTensorType>(rhs.getType());
+  auto globalRhsOpt = getGlobalRankedType(rhs);
+  if (!localRhs || !globalRhsOpt)
+    return std::nullopt;
+  RankedTensorType globalRhs = *globalRhsOpt;
+  if (localRhs.getRank() != globalRhs.getRank())
+    return std::nullopt;
+
+  for (int64_t dim = 0; dim < localRhs.getRank(); ++dim) {
+    int64_t local = localRhs.getDimSize(dim);
+    int64_t global = globalRhs.getDimSize(dim);
+    if (isDynamicOrUnknownDim(local) || isDynamicOrUnknownDim(global))
+      continue;
+    if (global > local && local > 0 && global % local == 0)
+      return global / local;
+  }
+  return std::nullopt;
+}
+
 static std::optional<std::string> getMhloShardingString(Value v) {
   // We treat "sharding on a value" as "sharding on its defining op" for
   // OpResults. BlockArgument sharding is ignored for now.
@@ -44,12 +187,6 @@ static std::optional<std::string> getMhloShardingString(Value v) {
     return printed;
   }
   return std::nullopt;
-}
-
-static bool isReplicatedSharding(const std::optional<std::string> &sharding) {
-  if (!sharding.has_value())
-    return true; // Missing sharding info => assume replicated.
-  return sharding->find("replicated") != std::string::npos;
 }
 
 static std::optional<int64_t> parseNumDevicesFromSharding(
@@ -183,7 +320,7 @@ struct InsertStablehloAllReduceAfterMatmul
 
   StringRef getArgument() const final { return "stablehlo-tp-allreduce"; }
   StringRef getDescription() const final {
-    return "Insert stablehlo.all_reduce after sharded matmuls (heuristic TP)";
+    return "Insert stablehlo.all_reduce after row-parallel matmul partial sums";
   }
 
   void runOnOperation() override {
@@ -213,33 +350,21 @@ struct InsertStablehloAllReduceAfterMatmul
       if (!resultTy)
         continue;
 
-      // Heuristic partial-sum candidate:
-      // - dot_general operands are expected to be (lhs, rhs)
-      // - require both operands to be annotated as non-replicated
-      //   (missing sharding => treated as replicated).
+      // Row-parallel partial-sum candidate (Megatron TP):
+      // compare RHS global vs local shapes along dot contracting dims.
       if (dotOp->getNumOperands() < 2)
         continue;
-      Value lhs = dotOp->getOperand(0);
       Value rhs = dotOp->getOperand(1);
 
-      auto lhsSharding = getMhloShardingString(lhs);
-      auto rhsSharding = getMhloShardingString(rhs);
-      bool replicatedLhs = isReplicatedSharding(lhsSharding);
-      bool replicatedRhs = isReplicatedSharding(rhsSharding);
-
-      // Determine num replicas from sharding on either operand.
-      auto nFromLhs = parseNumDevicesFromSharding(lhsSharding);
-      auto nFromRhs = parseNumDevicesFromSharding(rhsSharding);
-      int64_t numReplicas = 0;
-      if (nFromLhs.has_value())
-        numReplicas = *nFromLhs;
-      else if (nFromRhs.has_value())
-        numReplicas = *nFromRhs;
-
-      if (replicatedLhs || replicatedRhs) {
-        // Likely column-parallel case: one side replicated.
+      if (!isRowParallelPartialSum(dotOp, rhs))
         continue;
-      }
+
+      auto rhsSharding = getMhloShardingString(rhs);
+      int64_t numReplicas = 0;
+      if (auto nFromRatio = inferNumReplicasFromShardRatio(rhs))
+        numReplicas = *nFromRatio;
+      else if (auto nFromSharding = parseNumDevicesFromSharding(rhsSharding))
+        numReplicas = *nFromSharding;
 
       if (numReplicas <= 1)
         continue;

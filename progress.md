@@ -1,5 +1,19 @@
 # Progress
 
+## 2026-08-20
+
+- Improved TP AllReduce pass detection to use `dot_dimension_numbers` and
+  global/local RHS shape comparison along contracting dims, instead of the
+  previous "both operands non-replicated" sharding heuristic.
+- Motivation: column-parallel matmuls should never get an all_reduce, even
+  when intermediate activations carry sharding annotations; row-parallel matmuls
+  should be detected from Megatron-style weight sharding on the contracting dim.
+- Solution:
+  - parse contracting dims for `stablehlo.dot` / `stablehlo.dot_general`,
+  - trace global RHS shapes through `SPMD_shard_to_full_shape_inverse`, and
+  - add `test/` regression inputs, expected outputs, and `run_regression.sh`.
+- Status: pass + regression tests verified locally via `stablehlo-tp-opt`.
+
 ## 2026-08-19
 
 - Added a local StableHLO driver path in `stablehlo_tp_allreduce_pass` so the

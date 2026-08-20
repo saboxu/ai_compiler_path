@@ -6,7 +6,7 @@ module attributes {mhlo.num_replicas = 4 : i32} {
   func.func @forward_tp_two_layer_no_allreduce(
       %x: tensor<16x8xf32> {mhlo.sharding = "{replicated}"},
       %w1: tensor<8x16xf32> {mhlo.sharding = "{devices=[4]<=[4]}"},
-      %w2: tensor<16x6xf32> {mhlo.sharding = "{devices=[4]<=[4]}"},
+      %w2: tensor<16x6xf32> {mhlo.sharding = "{devices=[4]<=[4]}"}
     ) -> tensor<16x6xf32> {
 
     %w1_local = "stablehlo.custom_call"(%w1) {
